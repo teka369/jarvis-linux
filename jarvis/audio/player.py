@@ -15,7 +15,10 @@ from ..core.events import BUS
 
 async def _synthesize(text: str, settings: Settings, dest: Path) -> None:
     communicate = edge_tts.Communicate(
-        text=text, voice=settings.tts_voice, rate=settings.tts_rate, volume=settings.tts_volume
+        text=text,
+        voice=settings.tts_voice,
+        rate=settings.tts_rate,
+        volume=settings.tts_volume,
     )
     await communicate.save(str(dest))
 
@@ -29,14 +32,39 @@ def speak(text: str, settings: Settings) -> None:
     try:
         asyncio.run(_synthesize(cleaned, settings, path))
         audio, rate = sf.read(path, dtype="float32")
-        mono = audio.mean(axis=1) if audio.ndim > 1 else audio
-        hop = max(1024, rate // 20)
-        for start in range(0, len(mono), hop):
-            chunk = mono[start : start + hop]
-            rms = float(np.sqrt(np.mean(chunk * chunk))) if len(chunk) else 0.0
-            BUS.set_energy(min(1.0, rms * 4.5))
-            sd.play(chunk, rate)
-            sd.wait()
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        audio = np.ascontiguousarray(audio, dtype=np.float32)
+        hop = max(512, rate // 40)
+        idx = {"n": 0}
+
+        def callback(outdata, frames, _time, status):
+            start = idx["n"]
+            end = start + frames
+            chunk = audio[start:end]
+            if len(chunk) < frames:
+                out = np.zeros((frames, 1), dtype=np.float32)
+                if len(chunk):
+                    out[: len(chunk), 0] = chunk
+                    rms = float(np.sqrt(np.mean(chunk * chunk)))
+                    BUS.set_energy(min(1.0, rms * 4.2))
+                else:
+                    BUS.set_energy(0.0)
+                outdata[:] = out
+                raise sd.CallbackStop()
+            outdata[:, 0] = chunk
+            rms = float(np.sqrt(np.mean(chunk * chunk)))
+            BUS.set_energy(min(1.0, rms * 4.2))
+            idx["n"] = end
+
+        with sd.OutputStream(
+            samplerate=rate,
+            channels=1,
+            dtype="float32",
+            blocksize=hop,
+            callback=callback,
+        ):
+            sd.sleep(int(len(audio) / rate * 1000) + 80)
         BUS.set_energy(0.0)
     finally:
         path.unlink(missing_ok=True)
