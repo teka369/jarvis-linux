@@ -1,0 +1,93 @@
+assistant:
+  name: Jarvis
+  language: es
+  wake_words:
+    - jarvis
+    - yarbis
+    - jarbis
+    - harvis
+  personality: >
+    Eres J.A.R.V.I.S., el asistente de Juan en su escritorio Linux con KDE Plasma.
+    Hablas español de Colombia, breve, preciso y con un toque seco de ironía.
+    Nunca inventes que ejecutaste una acción: solo confírmala si la herramienta
+    devolvió éxito. Si no puedes hacer algo, dilo en una frase.
+
+audio:
+  sample_rate: 16000
+  channels: 1
+  max_utterance_seconds: 12
+  silence_seconds: 1.1
+  energy_threshold: 0.012
+
+hotkey:
+  enabled: true
+  # Super+J en notación de pynput. En Wayland a veces falla:
+  # usa el atajo de KDE que corre "jarvis listen".
+  combination: <cmd>+j
+
+tts:
+  voice: es-CO-GonzaloNeural
+  rate: +8%
+  volume: +0%
+
+providers:
+  stt_order:
+    - groq
+    - gemini
+  llm_order:
+    - gemini
+    - groq
+    - nvidia
+    - openrouter
+  vision_order:
+    - gemini
+  groq_stt_model: whisper-large-v3-turbo
+  groq_llm_model: openai/gpt-oss-120b
+  gemini_llm_model: gemini-2.5-flash
+  gemini_vision_model: gemini-2.5-flash
+  nvidia_llm_model: z-ai/glm-5.3-flash
+  openrouter_llm_model: openrouter/auto
+
+safety:
+  allow_shell: true
+  allowed_bins:
+    - firefox
+    - google-chrome
+    - chromium
+    - kate
+    - konsole
+    - dolphin
+    - spectacle
+    - xdg-open
+    - kwrite
+    - code
+    - cursor
+    - notify-send
+    - pactl
+    - playerctl
+    - brightnessctl
+    - loginctl
+    - systemctl
+    - hyprctl
+    - qdbus
+    - wmctrl
+    - xdotool
+    - ydotool
+    - kde-open
+    - gio
+  forbidden_patterns:
+    - rm -rf
+    - mkfs
+    - dd if=
+    - :(){
+    - shutdown
+    - reboot
+    - passwd
+    - chmod 777
+    - curl | sh
+    - wget | sh
+
+desktop:
+  default_browser: firefox
+  terminal: konsole
+  notes_dir: ~/Documents/jarvis

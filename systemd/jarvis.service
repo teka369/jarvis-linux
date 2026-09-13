@@ -1,0 +1,13 @@
+[Unit]
+Description=Jarvis voice assistant
+After=graphical-session.target pipewire.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/jarvis listen
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

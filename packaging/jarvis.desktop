@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Jarvis
+Comment=Asistente de voz J.A.R.V.I.S. para Linux
+Exec=jarvis once
+Icon=audio-input-microphone
+Terminal=false
+Type=Application
+Categories=Utility;AudioVideo;
+StartupNotify=false
