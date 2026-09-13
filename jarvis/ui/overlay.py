@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ..core.events import AvatarState, BUS
 from .avatar.engine import AvatarEngine
+from .qtboot import ensure_pyside
 
 POS_FILE = Path.home() / ".config" / "jarvis-linux" / "avatar.json"
 
@@ -25,13 +26,13 @@ def save_geom(x: int, y: int, size: int, opacity: float) -> None:
 
 
 def run_overlay(on_listen, on_quit):
-    try:
-        from PySide6.QtCore import Qt, QTimer
-        from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QRadialGradient, QPainterPath
-        from PySide6.QtWidgets import QApplication, QWidget, QMenu
-    except ImportError:
-        print("Falta PySide6. En CachyOS: sudo pacman -S pyside6")
+    if not ensure_pyside():
+        print("Falta PySide6 visible para el venv.")
+        print("CachyOS: sudo pacman -S pyside6 && ./install.sh")
         return 2
+    from PySide6.QtCore import Qt, QTimer
+    from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QRadialGradient, QPainterPath
+    from PySide6.QtWidgets import QApplication, QWidget, QMenu
 
     geom = load_geom()
     engine = AvatarEngine()
