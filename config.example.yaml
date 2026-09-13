@@ -21,9 +21,17 @@ audio:
 
 hotkey:
   enabled: true
-  # Super+J en notación de pynput. En Wayland a veces falla:
-  # usa el atajo de KDE que corre "jarvis listen".
-  combination: <cmd>+j
+  combination: <cmd>+<shift>+j
+
+camera:
+  enabled: true
+  device: auto
+
+permissions:
+  auto_confirm: []
+
+memory:
+  enabled: true
 
 tts:
   voice: es-CO-GonzaloNeural
@@ -31,16 +39,9 @@ tts:
   volume: +0%
 
 providers:
-  stt_order:
-    - groq
-    - gemini
-  llm_order:
-    - gemini
-    - groq
-    - nvidia
-    - openrouter
-  vision_order:
-    - gemini
+  stt_order: [groq, gemini]
+  llm_order: [gemini, groq, nvidia, openrouter]
+  vision_order: [gemini]
   groq_stt_model: whisper-large-v3-turbo
   groq_llm_model: openai/gpt-oss-120b
   gemini_llm_model: gemini-2.5-flash
@@ -75,6 +76,7 @@ safety:
     - ydotool
     - kde-open
     - gio
+    - pkill
   forbidden_patterns:
     - rm -rf
     - mkfs
