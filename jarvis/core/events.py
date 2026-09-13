@@ -11,6 +11,7 @@ class AvatarState(str, Enum):
     LISTENING = "listening"
     THINKING = "thinking"
     EXECUTING = "executing"
+    SEARCHING = "searching"
     SPEAKING = "speaking"
     ERROR = "error"
 

@@ -13,4 +13,15 @@ def get_registry() -> ToolRegistry:
 
 
 def execute_tool(name: str, arguments: dict, settings) -> str:
+    from ..core.events import AvatarState, BUS
+
+    visual = {
+        "web_search": AvatarState.SEARCHING,
+        "open_url": AvatarState.SEARCHING,
+        "look_camera": AvatarState.EXECUTING,
+        "screenshot": AvatarState.EXECUTING,
+        "run_command": AvatarState.EXECUTING,
+    }.get(name)
+    if visual:
+        BUS.set_state(visual)
     return get_registry().execute(name, arguments, settings)
