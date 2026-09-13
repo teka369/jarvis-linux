@@ -7,104 +7,11 @@ import httpx
 
 from ..config import Settings
 
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "open_url",
-            "description": "Abre una URL en el navegador.",
-            "parameters": {
-                "type": "object",
-                "properties": {"url": {"type": "string"}},
-                "required": ["url"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "open_app",
-            "description": "Abre una aplicación del escritorio (firefox, kate, dolphin, konsole, code...).",
-            "parameters": {
-                "type": "object",
-                "properties": {"app": {"type": "string"}, "args": {"type": "string"}},
-                "required": ["app"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_command",
-            "description": "Ejecuta un comando de shell de la lista blanca.",
-            "parameters": {
-                "type": "object",
-                "properties": {"command": {"type": "string"}},
-                "required": ["command"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_file",
-            "description": "Crea o sobrescribe un archivo dentro del home del usuario.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "content": {"type": "string"},
-                },
-                "required": ["path", "content"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "look_camera",
-            "description": "Toma una foto de la webcam y descríbela.",
-            "parameters": {
-                "type": "object",
-                "properties": {"prompt": {"type": "string"}},
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "screenshot",
-            "description": "Toma una captura de pantalla y descríbela.",
-            "parameters": {
-                "type": "object",
-                "properties": {"prompt": {"type": "string"}},
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "notify",
-            "description": "Muestra una notificación de escritorio.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "body": {"type": "string"},
-                },
-                "required": ["body"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "system_status",
-            "description": "Devuelve CPU, RAM, disco y uptime.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-]
+
+def _tool_schemas() -> list[dict[str, Any]]:
+    from ..tools import get_registry
+
+    return get_registry().openai_tools()
 
 
 class ProviderError(RuntimeError):
@@ -141,42 +48,31 @@ def complete(messages: list[dict[str, str]], settings: Settings) -> dict[str, An
                     key=settings.openrouter_api_key,
                     model=settings.openrouter_llm_model,
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             errors.append(f"{name}: {exc}")
     raise ProviderError("LLM falló en todos los proveedores. " + " | ".join(errors))
 
 
-def _openai_compatible(
-    messages: list[dict[str, str]],
-    settings: Settings,
-    *,
-    base: str,
-    key: str,
-    model: str,
-) -> dict[str, Any]:
+def _openai_compatible(messages, settings, *, base, key, model):
     if not key:
         raise ProviderError("Falta API key")
     payload = {
         "model": model,
         "temperature": 0.3,
         "messages": messages,
-        "tools": TOOLS,
+        "tools": _tool_schemas(),
         "tool_choice": "auto",
     }
     response = httpx.post(
         f"{base}/chat/completions",
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json=payload,
         timeout=90,
     )
     response.raise_for_status()
     choice = response.json()["choices"][0]["message"]
-    calls = choice.get("tool_calls") or []
     parsed = []
-    for call in calls:
+    for call in choice.get("tool_calls") or []:
         fn = call.get("function") or {}
         args = fn.get("arguments") or "{}"
         try:
@@ -187,7 +83,7 @@ def _openai_compatible(
     return {"text": (choice.get("content") or "").strip(), "tools": parsed}
 
 
-def _gemini(messages: list[dict[str, str]], settings: Settings) -> dict[str, Any]:
+def _gemini(messages, settings):
     if not settings.gemini_api_key:
         raise ProviderError("Falta GEMINI_API_KEY")
     system = next((m["content"] for m in messages if m["role"] == "system"), "")
@@ -197,7 +93,7 @@ def _gemini(messages: list[dict[str, str]], settings: Settings) -> dict[str, Any
             continue
         role = "user" if message["role"] == "user" else "model"
         contents.append({"role": role, "parts": [{"text": message["content"]}]})
-    payload: dict[str, Any] = {
+    payload = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": contents,
         "generationConfig": {"temperature": 0.3},
@@ -211,8 +107,8 @@ def _gemini(messages: list[dict[str, str]], settings: Settings) -> dict[str, Any
     response.raise_for_status()
     body = response.json()
     parts = (((body.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
-    text_bits: list[str] = []
-    tools: list[dict[str, Any]] = []
+    text_bits = []
+    tools = []
     for part in parts:
         if "text" in part:
             text_bits.append(part["text"])
@@ -222,15 +118,9 @@ def _gemini(messages: list[dict[str, str]], settings: Settings) -> dict[str, Any
     return {"text": "\n".join(text_bits).strip(), "tools": tools}
 
 
-def _gemini_tools() -> dict[str, Any]:
+def _gemini_tools():
     decls = []
-    for tool in TOOLS:
+    for tool in _tool_schemas():
         fn = tool["function"]
-        decls.append(
-            {
-                "name": fn["name"],
-                "description": fn["description"],
-                "parameters": fn["parameters"],
-            }
-        )
+        decls.append({"name": fn["name"], "description": fn["description"], "parameters": fn["parameters"]})
     return {"function_declarations": decls}
