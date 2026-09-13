@@ -36,8 +36,12 @@ def reply(user_text: str, settings: Settings, history: list[dict[str, str]]) -> 
     system = (
         settings.personality
         + "\nResponde en español, máximo 3 frases, salvo archivo o comando."
-        + " Usa herramientas para acciones reales. Si look_camera devuelve CAPTURA_FALLIDA,"
-        + " di que no pudiste ver y explica el motivo; nunca inventes que viste."
+        + " Usa herramientas para acciones reales."
+        + " Si el usuario dice cierra la ventana, usa close_window, no digas que no puedes."
+        + " Si habla de 'aquí', 'esto', 'esta pantalla' o 'este archivo', llama screenshot ANTES de preguntar la ruta."
+        + " Si pide entrar a una web, usa open_url; si pide bajar o subir, usa scroll_screen."
+        + " Ruta por defecto si no hay otra: ~/Escritorio."
+        + " Si look_camera o screenshot fallan, dilo; no inventes que viste."
         + " Si una herramienta pide CONFIRMATION_REQUIRED, pregunta confirmación."
     )
     if memory_block:
