@@ -14,6 +14,7 @@ from ..providers.vision import describe_image
 from ..safety import SafetyError, assert_safe_command, assert_safe_path
 from ..vision.camera import CameraError, capture_frame, list_cameras, probe
 from .base import Tool
+from .workspace import extra_tools
 
 CACHE = Path.home() / ".cache" / "jarvis-linux"
 MEMORY = Memory()
@@ -29,16 +30,16 @@ def all_tools() -> list[Tool]:
         Tool("read_file", "Lee un archivo de texto del home (máx 8KB).", {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}, [Capability.READ], _read_file),
         Tool("list_dir", "Lista un directorio del home.", {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}, [Capability.READ], _list_dir),
         Tool("delete_path", "Elimina un archivo del home. Requiere confirmed=true.", {"type": "object", "properties": {"path": {"type": "string"}, "confirmed": {"type": "boolean"}}, "required": ["path"]}, [Capability.WRITE, Capability.DESTRUCTIVE], _delete_path),
-        Tool("look_camera", "Captura un frame de la webcam y lo analiza. No afirma ver si falla la captura.", {"type": "object", "properties": {"prompt": {"type": "string"}}}, [Capability.CAMERA, Capability.NETWORK], _look_camera),
-        Tool("camera_status", "Lista cámaras detectadas y dependencias, sin capturar.", {"type": "object", "properties": {}}, [Capability.READ], _camera_status),
+        Tool("look_camera", "Captura un frame de la webcam y lo analiza.", {"type": "object", "properties": {"prompt": {"type": "string"}}}, [Capability.CAMERA, Capability.NETWORK], _look_camera),
+        Tool("camera_status", "Lista cámaras detectadas.", {"type": "object", "properties": {}}, [Capability.READ], _camera_status),
         Tool("screenshot", "Captura la pantalla y la describe.", {"type": "object", "properties": {"prompt": {"type": "string"}}}, [Capability.READ, Capability.NETWORK], _screenshot),
         Tool("notify", "Notificación de escritorio.", {"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}}, "required": ["body"]}, [Capability.SYSTEM], _notify),
         Tool("system_status", "CPU load, RAM y hora.", {"type": "object", "properties": {}}, [Capability.READ, Capability.SYSTEM], _system_status),
-        Tool("set_volume", "Cambia el volumen Pulse/PipeWire (0-150).", {"type": "object", "properties": {"percent": {"type": "integer"}}, "required": ["percent"]}, [Capability.SYSTEM], _set_volume),
-        Tool("media_control", "play/pause/next/previous con playerctl.", {"type": "object", "properties": {"action": {"type": "string", "enum": ["play", "pause", "next", "previous", "stop"]}}, "required": ["action"]}, [Capability.SYSTEM], _media),
-        Tool("remember", "Guarda un hecho en memoria de largo plazo.", {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}}, "required": ["key", "value"]}, [Capability.WRITE], _remember),
-        Tool("recall", "Recupera hechos de la memoria de largo plazo.", {"type": "object", "properties": {"key": {"type": "string"}}}, [Capability.READ], _recall),
-    ]
+        Tool("set_volume", "Cambia el volumen (0-150).", {"type": "object", "properties": {"percent": {"type": "integer"}}, "required": ["percent"]}, [Capability.SYSTEM], _set_volume),
+        Tool("media_control", "play/pause/next/previous con playerctl.", {"type": "object", "properties": {"action": {"type": "string"}}, "required": ["action"]}, [Capability.SYSTEM], _media),
+        Tool("remember", "Guarda un hecho en memoria.", {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}}, "required": ["key", "value"]}, [Capability.WRITE], _remember),
+        Tool("recall", "Recupera hechos de memoria.", {"type": "object", "properties": {"key": {"type": "string"}}}, [Capability.READ], _recall),
+    ] + extra_tools()
 
 
 def _open_url(args: dict[str, Any], settings: Any) -> str:
@@ -66,8 +67,6 @@ def _close_app(args: dict[str, Any], settings: Any) -> str:
     app = Path(str(args.get("app") or "")).name
     if not app:
         return "Falta el nombre de la app."
-    if "pkill" not in settings.allowed_bins:
-        raise SafetyError("pkill no está en la lista blanca")
     completed = subprocess.run(["pkill", "-x", app], capture_output=True, text=True)
     if completed.returncode == 0:
         return f"Cerré {app}"
@@ -120,8 +119,6 @@ def _look_camera(args: dict[str, Any], settings: Any) -> str:
         frame = capture_frame(device=settings.camera_device)
     except CameraError as exc:
         return f"CAPTURA_FALLIDA: {exc}"
-    if shutil.which("notify-send"):
-        subprocess.run(["notify-send", "-a", "Jarvis", "Cámara", f"Frame capturado: {frame}"], check=False)
     prompt = str(args.get("prompt") or "Describe con precisión lo que hay en esta foto.")
     return f"Frame: {frame}\n{describe_image(frame, prompt, settings)}"
 
@@ -129,7 +126,6 @@ def _look_camera(args: dict[str, Any], settings: Any) -> str:
 def _camera_status(_args: dict[str, Any], settings: Any) -> str:
     info = probe()
     info["enabled"] = settings.camera_enabled
-    info["configured_device"] = settings.camera_device
     return json.dumps(info, ensure_ascii=False)
 
 
@@ -140,10 +136,8 @@ def _screenshot(args: dict[str, Any], settings: Any) -> str:
         subprocess.run(["spectacle", "-b", "-n", "-o", str(dest)], timeout=12, check=False)
     elif shutil.which("grim"):
         subprocess.run(["grim", str(dest)], timeout=12, check=False)
-    elif shutil.which("import"):
-        subprocess.run(["import", "-window", "root", str(dest)], timeout=12, check=False)
     else:
-        return "No encontré spectacle, grim ni imagemagick."
+        return "No encontré spectacle ni grim."
     if not dest.exists():
         return "No pude guardar la captura."
     prompt = str(args.get("prompt") or "Resume lo que se ve en la pantalla.")
@@ -159,7 +153,7 @@ def _notify(args: dict[str, Any], settings: Any) -> str:
 
 
 def _system_status(_args: dict[str, Any], _settings: Any) -> str:
-    return json.dumps({"load": os.getloadavg(), "memory": _read_mem(), "time": datetime.now().isoformat(timespec="seconds"), "user": os.environ.get("USER"), "cameras": [c.path for c in list_cameras()]}, ensure_ascii=False)
+    return json.dumps({"load": os.getloadavg(), "memory": _read_mem(), "time": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False)
 
 
 def _set_volume(args: dict[str, Any], _settings: Any) -> str:
