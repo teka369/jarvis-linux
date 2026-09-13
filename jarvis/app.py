@@ -21,12 +21,10 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         default="listen",
         choices=["listen", "once", "text", "doctor"],
-        help="listen=siempre atento, once=un comando, text=sin micro, doctor=diagnóstico",
     )
     parser.add_argument("prompt", nargs="*", help="Texto para el modo text")
     args = parser.parse_args(argv)
     settings = load_settings()
-
     if args.mode == "doctor":
         return _doctor(settings)
     if args.mode == "text":
@@ -40,7 +38,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.mode == "once":
         return _turn(settings, require_wake=False, history=[])
-
     history: list[dict[str, str]] = []
     toast(settings.name, "En línea. Di Jarvis o pulsa Super+J.")
     print("Jarvis escuchando. Ctrl+C para salir.")
@@ -74,7 +71,7 @@ def _turn(settings, require_wake: bool, history: list[dict[str, str]]) -> int:
         print(f"{settings.name}: {spoken}")
         speak(spoken, settings)
         return 0
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         toast("Jarvis", str(exc))
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -105,6 +102,15 @@ def _doctor(settings) -> int:
     print(f"GEMINI: {'sí' if settings.gemini_api_key else 'no'}")
     print(f"NVIDIA: {'sí' if settings.nvidia_api_key else 'no'}")
     print(f"OPENROUTER: {'sí' if settings.openrouter_api_key else 'no'}")
+    print(f"Cámara config: enabled={settings.camera_enabled} device={settings.camera_device}")
+    from .vision.camera import probe
+    info = probe()
+    print(f"ffmpeg: {'sí' if info['ffmpeg'] else 'no'}")
+    if info["devices"]:
+        for cam in info["devices"]:
+            print(f"  camera {cam['path']}  {cam['name']}")
+    else:
+        print("  no hay /dev/video*")
     if not settings.groq_api_key and not settings.gemini_api_key:
         print("Falta al menos GROQ_API_KEY o GEMINI_API_KEY")
         return 1

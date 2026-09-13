@@ -50,6 +50,9 @@ class Settings:
     default_browser: str = "firefox"
     terminal: str = "konsole"
     notes_dir: str = "~/Documents/jarvis"
+    camera_enabled: bool = True
+    camera_device: str = "auto"
+    auto_confirm: list[str] = field(default_factory=list)
     groq_api_key: str = ""
     gemini_api_key: str = ""
     nvidia_api_key: str = ""
@@ -64,11 +67,9 @@ class Settings:
 def load_settings() -> Settings:
     load_dotenv(ROOT / ".env")
     load_dotenv(HOME_CFG / ".env")
-
     raw = _load_yaml(ROOT / "config.example.yaml")
     raw = _deep_merge(raw, _load_yaml(ROOT / "config.yaml"))
     raw = _deep_merge(raw, _load_yaml(HOME_CFG / "config.yaml"))
-
     assistant = raw.get("assistant") or {}
     audio = raw.get("audio") or {}
     hotkey = raw.get("hotkey") or {}
@@ -76,7 +77,8 @@ def load_settings() -> Settings:
     providers = raw.get("providers") or {}
     safety = raw.get("safety") or {}
     desktop = raw.get("desktop") or {}
-
+    camera = raw.get("camera") or {}
+    permissions = raw.get("permissions") or {}
     return Settings(
         name=assistant.get("name", "Jarvis"),
         language=assistant.get("language", "es"),
@@ -107,6 +109,9 @@ def load_settings() -> Settings:
         default_browser=str(desktop.get("default_browser", "firefox")),
         terminal=str(desktop.get("terminal", "konsole")),
         notes_dir=str(desktop.get("notes_dir", "~/Documents/jarvis")),
+        camera_enabled=bool(camera.get("enabled", True)),
+        camera_device=str(camera.get("device", "auto")),
+        auto_confirm=list(permissions.get("auto_confirm") or []),
         groq_api_key=os.getenv("GROQ_API_KEY", ""),
         gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
         nvidia_api_key=os.getenv("NVIDIA_API_KEY", ""),
@@ -115,7 +120,7 @@ def load_settings() -> Settings:
     )
 
 
-def _deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+def _deep_merge(base, extra):
     out = dict(base)
     for key, value in extra.items():
         if isinstance(value, dict) and isinstance(out.get(key), dict):
