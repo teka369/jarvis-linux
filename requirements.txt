@@ -7,3 +7,4 @@ soundfile>=0.12.1
 edge-tts>=7.0.0
 webrtcvad-wheels>=2.0.14
 pynput>=1.7.7
+pytest>=8.0.0
