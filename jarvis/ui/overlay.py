@@ -33,7 +33,7 @@ def run_overlay(on_listen, on_quit):
         print("CachyOS: sudo pacman -S pyside6 && ./install.sh")
         return 2
     from PySide6.QtCore import Qt, QTimer, QPoint
-    from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QRadialGradient, QPainterPath
+    from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QRadialGradient, QPainterPath, QRegion
     from PySide6.QtWidgets import QApplication, QWidget, QMenu
 
     geom = load_geom()
@@ -41,11 +41,13 @@ def run_overlay(on_listen, on_quit):
 
     class Core(QWidget):
         def __init__(self) -> None:
-            flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
+            flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Window
             super().__init__(None, flags)
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, False)
+            self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
             size = max(MIN_SIZE, min(MAX_SIZE, int(geom.get("size") or 320)))
+            self.setMinimumSize(size, size)
+            self.setMaximumSize(size, size)
             self.resize(size, size)
             self.move(int(geom.get("x") or 80), int(geom.get("y") or 80))
             self.setWindowOpacity(float(geom.get("opacity") or 0.97))
@@ -69,21 +71,31 @@ def run_overlay(on_listen, on_quit):
             engine.tick(BUS.state, BUS.energy, 0.045 if idle else 0.028)
             self.update()
 
-        def wheelEvent(self, event) -> None:
-            step = 24 if event.angleDelta().y() > 0 else -24
-            new = max(MIN_SIZE, min(MAX_SIZE, self.width() + step))
-            if new == self.width():
-                return
+        def _apply_size(self, new: int) -> None:
+            new = max(MIN_SIZE, min(MAX_SIZE, int(new)))
             cx = self.x() + self.width() // 2
             cy = self.y() + self.height() // 2
+            self.setMinimumSize(new, new)
+            self.setMaximumSize(new, new)
             self.resize(new, new)
-            self.move(cx - new // 2, cy - new // 2)
+            handle = self.windowHandle()
+            if handle is not None:
+                handle.resize(new, new)
+            self.move(max(0, cx - new // 2), max(0, cy - new // 2))
             self._persist()
+
+        def wheelEvent(self, event) -> None:
+            self._apply_size(self.width() + (28 if event.angleDelta().y() > 0 else -28))
+
+        def resizeEvent(self, event) -> None:
+            self.setMask(QRegion(0, 0, self.width(), self.height(), QRegion.RegionType.Ellipse))
+            super().resizeEvent(event)
 
         def paintEvent(self, _event) -> None:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             w, h = self.width(), self.height()
+            painter.fillRect(0, 0, w, h, QColor(2, 4, 12, 18))
             cx, cy = w / 2, h / 2
             scale = w / 320
             color = engine.palette(BUS.state)
@@ -167,8 +179,10 @@ def run_overlay(on_listen, on_quit):
 
         def mousePressEvent(self, event) -> None:
             if event.button() == Qt.MouseButton.LeftButton:
+                handle = self.windowHandle()
+                if handle is not None and handle.startSystemMove():
+                    return
                 self._drag = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                self.grabMouse()
             elif event.button() == Qt.MouseButton.RightButton:
                 menu = QMenu(self)
                 menu.addAction("Escuchar", on_listen)
@@ -179,20 +193,13 @@ def run_overlay(on_listen, on_quit):
                 menu.exec(event.globalPosition().toPoint())
 
         def _resize_by(self, step: int) -> None:
-            new = max(MIN_SIZE, min(MAX_SIZE, self.width() + step))
-            cx = self.x() + self.width() // 2
-            cy = self.y() + self.height() // 2
-            self.resize(new, new)
-            self.move(cx - new // 2, cy - new // 2)
-            self._persist()
+            self._apply_size(self.width() + step)
 
         def mouseMoveEvent(self, event) -> None:
             if self._drag is not None and event.buttons() & Qt.MouseButton.LeftButton:
                 self.move(event.globalPosition().toPoint() - self._drag)
 
         def mouseReleaseEvent(self, _event) -> None:
-            if self._drag is not None:
-                self.releaseMouse()
             self._drag = None
             self._persist()
 
