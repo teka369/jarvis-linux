@@ -10,8 +10,9 @@ from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 
 from ..core.permissions import Capability
-from ..safety import SafetyError, assert_safe_path
+from ..safety import assert_safe_path
 from .base import Tool
+from .desktop_control import extra_desktop_tools
 
 
 def extra_tools() -> list[Tool]:
@@ -22,10 +23,10 @@ def extra_tools() -> list[Tool]:
         Tool("find_files", "Busca archivos por nombre en una carpeta del home.", {"type": "object", "properties": {"root": {"type": "string"}, "name": {"type": "string"}}, "required": ["name"]}, [Capability.READ], _find),
         Tool("web_search", "Busca en DuckDuckGo y devuelve títulos y enlaces.", {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}, [Capability.NETWORK], _web),
         Tool("pacman_search", "Busca paquetes en pacman/CachyOS.", {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}, [Capability.READ, Capability.SYSTEM], _pacman_search),
-        Tool("pacman_install", "Instala un paquete oficial con pacman. Requiere confirmed=true. No instala .exe ni links de Google.", {"type": "object", "properties": {"package": {"type": "string"}, "confirmed": {"type": "boolean"}}, "required": ["package"]}, [Capability.EXECUTE, Capability.SYSTEM, Capability.DESTRUCTIVE], _pacman_install),
+        Tool("pacman_install", "Instala un paquete oficial con pacman. Requiere confirmed=true.", {"type": "object", "properties": {"package": {"type": "string"}, "confirmed": {"type": "boolean"}}, "required": ["package"]}, [Capability.EXECUTE, Capability.SYSTEM, Capability.DESTRUCTIVE], _pacman_install),
         Tool("open_editor", "Abre un archivo o carpeta en VS Code, Cursor o Kate.", {"type": "object", "properties": {"path": {"type": "string"}, "editor": {"type": "string"}}, "required": ["path"]}, [Capability.EXECUTE], _open_editor),
         Tool("scaffold_html", "Crea una carpeta con index.html y la abre en el editor.", {"type": "object", "properties": {"path": {"type": "string"}, "title": {"type": "string"}}, "required": ["path"]}, [Capability.WRITE, Capability.EXECUTE], _scaffold),
-    ]
+    ] + extra_desktop_tools()
 
 
 def _mkdir(args: dict[str, Any], _s: Any) -> str:
@@ -99,15 +100,13 @@ def _pacman_install(args: dict[str, Any], _s: Any) -> str:
     pkg = re.sub(r"[^a-zA-Z0-9_+.-]", "", str(args.get("package") or ""))
     if not pkg:
         return "Paquete inválido."
-    if not shutil.which("pacman"):
-        return "No está pacman."
     cmd = ["pacman", "-S", "--needed", "--noconfirm", pkg]
     if os_geteuid() != 0:
         cmd = ["sudo", "-n"] + cmd
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
     text = (out.stdout or "") + (out.stderr or "")
     if out.returncode != 0:
-        return f"No pude instalar {pkg}. Usa sudo o confirma el nombre oficial.\n{text[-700:]}"
+        return f"No pude instalar {pkg}.\n{text[-700:]}"
     return f"Instalé {pkg}."
 
 
@@ -130,8 +129,7 @@ def _scaffold(args: dict[str, Any], settings: Any) -> str:
     path = assert_safe_path(str(args.get("path") or ""))
     path.mkdir(parents=True, exist_ok=True)
     title = str(args.get("title") or path.name)
-    index = path / "index.html"
-    index.write_text(
+    (path / "index.html").write_text(
         f"<!doctype html>\n<html lang=es><meta charset=utf-8><title>{title}</title>"
         f"<body><h1>{title}</h1><p>Creado por Jarvis.</p></body></html>\n",
         encoding="utf-8",
